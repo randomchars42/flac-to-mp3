@@ -9,12 +9,15 @@
 ## so this should work 
 # count=$(nproc)
 
+inputdir="/path/to/input"
+outputdir="/path/to/output"
+
 ## if you want to use this dynamically, you might consider this version - UNTESTED though
 # for i in {1..$count}
 for i in {1..4}
 do
     echo "started instance no: $i"
-    /home/osmc/transform.sh . &
+    ./transform.sh -i "$inputdir" -o "$outputdir" -t "$i" &
     sleep 5
 done
 echo "all instances started"
