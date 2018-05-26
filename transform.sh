@@ -5,14 +5,11 @@
 #         below this directory will be replicated, must not end with "/"
 # -o DIR: output directory
 # -t NUMBER: number of thread calling this script for multi-thraeding
+# -e ENCODER: either ffmpeg or avconv, default: ffmpeg
 # -d: dry-run, for debugging, won't create any directories / convert any files
 # -v: for debugging, be extra verbose
-#
-# - on my raspberry I could only use avconv, not ffmpeg. 
-#    choose, whatever suits you best
 
-# The IFS takes care of spaces in file and dirnames 
-# your folders may vary
+# the IFS takes care of spaces in file and dirnames
 IFS=$'\n'
 
 # for debugging purposes
@@ -22,30 +19,36 @@ testonly="F"
 verbose="F"
 # default thread number
 thread="0"
+# default encoder
+encoder="ffmpeg"
 
 # read options
-while getopts ":i:o:t:dv" opt; do
+while getopts ":i:o:t:e:dv" opt; do
   case "$opt" in
-		i)
-			echo "convert files in: $OPTARG"
-			sourcebasedir="$OPTARG"
-			;;
-		o)
-			echo "write them to: $OPTARG"
-			outputbasedir="$OPTARG"
-			;;
+    i)
+      echo "convert files in: $OPTARG"
+      sourcebasedir="$OPTARG"
+      ;;
+    o)
+      echo "write them to: $OPTARG"
+      outputbasedir="$OPTARG"
+      ;;
+    e)
+      echo "encoder: $OPTARG"
+      encoder="$OPTARG"
+      ;;
     v)
-			echo "verbose"
-			verbose="T"
-			;;
+      echo "verbose"
+      verbose="T"
+      ;;
     d)
-			echo "dry-run only"
-			testonly="T"
-			;;
-		t)
-			echo "thread number"
-			thread="$OPTARG"
-			;;
+      echo "dry-run only"
+      testonly="T"
+      ;;
+    t)
+      echo "thread number"
+      thread="$OPTARG"
+      ;;
     \?)
       echo "Invalid option: -$OPTARG" >&2
       exit 1
@@ -75,25 +78,27 @@ trap '
 # unfinished -> on the next run delete that file
 
 function delete_unfinished {
-	echo "looking for unfinished files"
+  echo "looking for unfinished files"
 
-	# be verbose
-	[[ -f "$confdir/current$thread" ]] &&
-		[[ $verbose == 'T' ]] &&
-		echo "detected unfinished file: " &&
-		echo $(<"$confdir/current$thread")
+  if [[ -f "$confdir/current$thread" ]]; then
+    # be verbose
+    [[ $verbose == 'T' ]] &&
+      echo "detected unfinished file: "$(<"$confdir/current$thread")
 
-	# remove unfinished file and the file holding this information
-	[[ -f "$confdir/current$thread" ]] &&
-		[[ $testonly == 'F' ]] &&
-	  removed=$(<"$confdir/current$thread") &&
-	  rm $(<"$confdir/current$thread") &&
-	  rm "$confdir/current$thread" &&
-		echo "removed file: $removed"
+    # remove unfinished file and the file holding this information
+    if [[ $testonly == 'F' ]]; then
+      removed=$(<"$confdir/current$thread")
+      rm $(<"$confdir/current$thread")
+      rm "$confdir/current$thread"
+      echo "removed file: $removed"
+    fi
+  fi
 }
 
-[[ ! -d "$confdir" ]] && [[ $verbose == 'T' ]] && echo "creating: $confdir"
-[[ ! -d "$confdir" ]] && mkdir -p "$confdir"
+if [[ ! -d "$confdir" ]]; then
+  [[ $verbose == 'T' ]] && echo "creating: $confdir"
+  mkdir -p "$confdir"
+fi
 
 delete_unfinished
 
@@ -108,28 +113,30 @@ do
   outputfile="$outputdir/$targetname"
   
 
-	[[ $verbose == 'T' ]] &&
-		echo "file: $file" &&
-		echo "filename: $filename" &&
-		echo "targetname: $targetname" &&
-		echo "sourcedir: $sourcedir" &&
-		echo "relativedir: $relativedir" &&
-		echo "outputdir: $outputdir" &&
-		echo "outputfile: $outputfile"
+  if [[ $verbose == 'T' ]]; then
+    echo "file: $file"
+    echo "filename: $filename"
+    echo "targetname: $targetname"
+    echo "sourcedir: $sourcedir"
+    echo "relativedir: $relativedir"
+    echo "outputdir: $outputdir"
+    echo "outputfile: $outputfile"
+  fi
 
-	echo "$outputfile" > "$confdir/current"
-  [[ ! -d "$outputdir" ]] && [[ $testonly == 'F' ]] && mkdir -p "$outputdir"
+  echo "$outputfile" > "$confdir/current$thread"
 
-	# choose converter and quality to your liking
-	[[ ! -e "$outputfile" ]] && [[ $testonly == 'F' ]] &&
-		echo "converting: $relativedir/$filename to $outputfile" &&
-		# ffmpeg: constant bitrate: 320 k
-    #ffmpeg -loglevel info -i "$file" -codec:a libmp3lame -b:a 320k -vsync 2 "$outputfile"
-		# ffmpeg: variable bitrate: compression 2 (should be quite good)
-		ffmpeg -loglevel info -i "$file" -codec:a libmp3lame -qscale:a 2 -vsync 2 "$outputfile"
-		# avconv: variable bitrate: compression 0 (insanely good)
-    #avconv -n -nostats -loglevel info -i "$file" -codec:a libmp3lame -qscale:a 0 "$outputfile"
+  if [[ $testonly == 'F' ]]; then 
+    [[ ! -d "$outputdir" ]] && mkdir -p "$outputdir"
 
-	# if we reach this point, the file has been converted successfully
-	rm "$confdir/current"
+    # choose converter and quality to your liking
+    if [[ ! -e "$outputfile" ]]; then
+      echo "converting: $relativedir/$filename to $outputfile"
+
+      #ffmpeg -loglevel info -i "$file" -codec:a libmp3lame -b:a 320k -vsync 2 "$outputfile"
+      $encoder -nostats -n -loglevel info -i "$file" -codec:a libmp3lame -qscale:a 2 -vsync 2 "$outputfile"
+    fi
+
+    # if we reach this point, the file has been converted successfully
+    rm "$confdir/current$thread"
+  fi
 done
